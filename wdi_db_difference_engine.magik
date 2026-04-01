@@ -1,0 +1,135 @@
+#% text_encoding = iso8859_1
+# ************************************************************ 
+# Database Difference Engine - CORRECTED VERSION
+# (c) 2005-2012 General Electric Company. All Rights Reserved. 
+# ************************************************************ 
+
+#remex(:wdi_db_difference_engine)
+
+_package user
+_pragma(classify_level=restricted, topic={db_difference_tool})
+
+##
+## Engine class for comparing database views and reporting differences.
+##
+
+# --- Engine Definition ---
+
+def_slotted_exemplar(:wdi_db_difference_engine,
+	{
+	},
+	:engine_model)
+$
+
+
+
+# --- Main Difference Calculation Method ---
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_engine.difference_db(new_view, old_view, _optional tables)
+    ## Compare two database views and return differences
+    ## 
+    ## Parameters:
+    ##   new_view - The newer database view (or "from" alternative)
+    ##   old_view - The older database view (or "to" alternative)
+    ##   tables   - Optional rope of table collections to compare
+    ##              If not provided, compares all collections
+    ##
+    ## Returns:
+    ##   ht - Hash table with :insert, :update, :remove sets of records
+    ##   ct - Hash table with :insert, :update, :remove counts
+    ##   lc - Hash table with :insert, :update, :remove counts per table
+    ##
+    
+    ht << hash_table.new()
+    ct << hash_table.new()
+    lc << hash_table.new()
+
+    ht[:insert] << set.new()
+    ht[:update] << set.new()
+    ht[:remove] << set.new()
+
+    ct[:insert] << 0
+    ct[:update] << 0
+    ct[:remove] << 0
+
+    lc[:insert] << 0
+    lc[:update] << 0
+    lc[:remove] << 0
+
+    # If tables not provided, use all collections from new_view
+    tables << tables.default(new_view.collections)
+
+    _for a_table _over tables.fast_elements()
+    _loop
+        # Reset local counters for this table
+        lc[:insert] << 0
+        lc[:update] << 0
+        lc[:remove] << 0
+
+        name << a_table.name
+        ext << a_table.external_name
+
+     #   write("Processing table: ", ext)
+
+        # Try to create difference stream for this table
+        _try 
+            diff_stream << ds_difference_stream.new_on(
+                new_view.collections[name], 
+                old_view.collections[name])
+        _when error
+            write("  Skipping table ", ext, " - ", condition.report_contents_string)
+            _continue
+        _endtry
+
+        # Process differences
+        _protect
+            _loop
+                (type, curr_rec) << diff_stream.get()
+                
+                _if type _is _unset
+                _then
+                    _leave
+                _endif
+
+                # Skip remove records that don't actually exist in old view
+                _try
+                    _if type _is :remove _andif
+                        old_view.collections[name].at(curr_rec.id) _is _unset
+                    _then
+                        _continue
+                    _endif
+                _when error
+                    # Continue processing even if check fails
+                _endtry
+
+                # Add to result sets
+                ct[type] +<< 1
+                lc[type] +<< 1
+                ht[type].add(curr_rec)
+            _endloop
+
+            # Report table summary if there were changes
+            _if lc[:insert] _isnt 0 _orif
+                lc[:update] _isnt 0 _orif
+                lc[:remove] _isnt 0
+            _then
+                write("  ", ext.write_string.space_pad(35), 
+                      " Insert: ", lc[:insert],
+                      " Update: ", lc[:update],
+                      " Remove: ", lc[:remove])
+            _endif
+
+        _protection
+            diff_stream.close()
+        _endprotect
+    _endloop
+
+#    write("Total differences - Insert: ", ct[:insert], 
+#          " Update: ", ct[:update], 
+#          " Remove: ", ct[:remove])
+
+   _return  ht, ct, lc
+_endmethod
+$
+
+

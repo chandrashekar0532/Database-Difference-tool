@@ -1,0 +1,1652 @@
+# ************************************************************ 
+# Database Difference GUI Plugin 
+# ************************************************************ 
+
+#remex(:wdi_db_difference_gui_plugin)
+
+_package user
+$
+_pragma(classify_level=restricted, topic={db_difference_tool})
+##
+## wdi_db_difference_gui_plugin
+##
+## A model-based GUI plugin that builds and manages the Database Difference
+## dialog.  It delegates the actual record-level comparison work to an
+## instance of wdi_db_difference_engine.
+##
+# Define the plugin class 
+def_slotted_exemplar(:wdi_db_difference_gui_plugin,
+	{
+	        {:items,               _unset, :writable},  # Property list of all GUI widgets
+		{:tree_item,           _unset, :writable},  # Results tree widget reference
+		{:table_tree_item,     _unset, :writable},  # Table-selection tree widget
+		{:list,                _unset, :writable},  # Rope of result display_tree nodes
+		{:table_list,          _unset, :writable},  # Rope of table display_tree nodes
+		{:current_dataset,     _unset, :writable},  # Symbol of the selected dataset
+		{:db_view,             _unset, :writable},  # Active database view object
+		{:last_dialog_opened,  _unset, :writable},  # :from or :to - tracks which button was pressed
+		{:db_diff_eng,         _unset, :writable}  # Shared difference engine instance
+
+	},
+	:model
+)
+$
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.new()
+	###
+	## Default constructor – creates and initialises a standalone plugin
+	## instance (not attached to an engine frame).
+	##
+	>> _clone.init()
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.init()
+	##
+	## Initialise all slot values and create the shared difference engine.
+	##
+	_super.init()
+	.items          << property_list.new()
+	.table_list     << rope.new()
+	.current_dataset  << _unset
+	.list           << rope.new()
+	.db_diff_eng    << wdi_db_difference_engine.new()
+	>> _self 
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+wdi_db_difference_gui_plugin.define_shared_variable(:active_instance, _unset, :public)	
+$
+_pragma(classify_level=restricted, topic={db_difference_tool})
+wdi_db_difference_gui_plugin.define_shared_variable(:report_dir, _unset, :public)
+$
+
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.build_gui(container)
+	## Build GUI in container
+	>> _self.activate_in(container)
+_endmethod
+$
+
+# ==============================================================================
+#                        GUI Layout
+# ==============================================================================
+_method wdi_db_difference_gui_plugin.activate_in(p_frame)
+
+    
+	_if smallworld_product.release_version = 5
+	_then
+		write("+++ 33333333333 +++")
+		
+		_self.activate_dialog_version5(p_frame)
+	_else
+		write("+++ in else 3 4 +++")
+		
+		_self.activate_dialog_version3_version4(p_frame)
+	_endif 
+
+
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.activate_dialog_version5(p_frame)
+	## 
+	## 
+	 write("+++ 444444444 +++")
+         
+	wdi_db_difference_gui_plugin.active_instance << _self  
+	p_frame.default_resize? << _true
+	p_frame.title << "Database Difference Tool"
+
+	# ================= MAIN CONTAINER =================
+	main_rc << rowcol.new(p_frame, _unset, 1)
+	main_rc.resize_x? << _true
+	main_rc.resize_y? << _true
+	main_rc.outer_spacing << 10
+	main_rc.row_resize_values << {0, 0, 40, 0, 60, 0}
+
+	# ================= STATUS =================
+	status_rc << rowcol.new(main_rc, 1, 2)
+	label_item.new(status_rc, "Status:")
+	.items[:st] << label_item.new(status_rc, "Ready...")
+
+	# ================= DATASET =================
+	dataset_rc << rowcol.new(main_rc, 1, 1)
+	.items[:dataset] << text_choice_item.new(dataset_rc,
+						 "DATASETS *",
+						 :items, _self.db_list(),
+						 :model, _self,
+						 :col_alignment, :left,
+						 :change_selector, :dataset_changed|()|)
+
+	# ================= TABLES =================
+	label_item.new(main_rc, "TABLES *",:col_alignment, :left )
+
+	table_rc << rowcol.new(main_rc, _unset, 1)
+	table_rc.resize_x? << _true
+	table_rc.resize_y? << _true
+	
+
+        _local l_table_tree << .table_tree_item << tree_item.new(table_rc,
+								 :model, _self,
+								 :aspect, :tables_aspect,
+								 :column_headings, {"Select", "Table Name"},
+								 :column_heading_ids, {:check, :table_name},
+								 :column_widths, {100, 250},
+								 :col_alignment, :fill,
+								 :row_alignment, :left,
+								 :column_alignments, {:centre, :left},
+								 :grid_lines?, _true,
+								 :height, 150,
+								 :mode, :none,
+								 :value_click_notifier, :note_changes|()|)
+
+	
+
+	# ================= Alternative INPUT =================
+	
+	alt_rc << rowcol.new(main_rc, 3, 2)
+	#alt_rc.col_alignment << :fill
+
+        label_item.new(alt_rc,"")
+
+	.items[:from_alternative] << text_item.new(alt_rc, " FROM ALTERNATIVE ",:row, 2, :col, 1,:min_width, 150)
+	button_item.new_safe(alt_rc, "Select From Alt",
+			     _self, :open_version_dialog_from|()|,:col_alignment, :left,:row, 2, :col, 2,:min_width, 50)
+
+	.items[:to_alternative] << text_item.new(alt_rc, " TO ALTERNATIVE       ",:row, 3, :col, 1,:min_width, 150)
+	button_item.new_safe(alt_rc, "Select To Alt     ",
+			     _self, :open_version_dialog_to|()|,:col_alignment, :left,:row, 3, :col, 2,:min_width, 50)
+
+	# ================= CHECKPOINT =================
+	chk_rc << rowcol.new(main_rc, 2, 1)
+	chk_rc.col_alignment << :left
+
+	.items[:from_checkpoint] << text_choice_item.new(chk_rc,
+							 " FROM CHECKPOINT  ",
+							 :items, _self.chk_list(),
+							 :model, _self,
+							 :min_width, 200  )
+
+	.items[:to_checkpoint] << text_choice_item.new(chk_rc,
+						       " TO CHECKPOINT        ",
+						       :items, _self.chk_list(),
+						       :model, _self,
+						       :min_width, 200)
+
+	# ================= MODE =================
+	mode_rc << rowcol.new(main_rc, 2, 1)
+
+	label_item.new(mode_rc,
+		       "Select below Alternative/Checkpoint Mode to find the data differences between them :")
+
+	radio_rc << rowcol.new(mode_rc, 1, 2)
+	.items[:rb_alt] << radio_item.new(radio_rc, " Alternative ",
+					  :group, :mode_group,
+					  :model, _self,:col_alignment, :left)
+	.items[:rb_chk] << radio_item.new(radio_rc, " Checkpoint ",
+					  :group, :mode_group,
+					  :model, _self,:col_alignment, :centre)
+
+
+	# ================= ACTION BUTTONS =================
+	btn_rc << rowcol.new(main_rc, 1, 2)
+	button_item.new_safe(btn_rc, "Find Difference",
+			     _self, :find_difference|()|)
+
+	button_item.new_safe(btn_rc, "Clear Selection",
+			     _self, :clear_form|()|)
+
+	label_item.new(main_rc,"")
+
+	# ================= RESULTS =================
+	result_rc << rowcol.new(main_rc, _unset, 1)
+	result_rc.resize_x? << _true
+	result_rc.resize_y? << _true
+
+	.items[:tree_item] << tree_item.new(result_rc,
+					    :col_alignment, :fill,
+					    :row_alignment, :fill,
+					    :model, _self,
+					    :aspect, :difference_records,
+					    :style_holder, _unset,
+					    :column_headings, {"SNO", " Table Name","Table Key Field","Table Key Value", "Operation Type","Updated Field name","Before Value","Afetr Value"},
+					    :column_heading_ids, {:Sno, :Tablename,:table_key_field,:table_key_value, :Operation_type,:updated_fields,:before_value,:after_value},
+					    :column_widths, {150, 150, 150, 150,150,150,150,150},
+					    :column_alignments, {:left, :left, :left, :left,:left,:left,:left,:left},
+					    :row_headings?, _true,
+					    :row_headings_alignment, :right,
+					    :cell_selection?, _true,
+					    :grid_lines?, _true,
+					    :mode, :one,
+					    :select_notifier, :|selected()|)
+
+	# ================= FOOTER =================
+	footer_rc << rowcol.new(main_rc, 1, 2)
+
+	.items[:generate_report] << button_item.new_safe(footer_rc,
+							 "Export Results", _self, :export_results|()|,
+							 :enabled?, _false)
+
+	button_item.new_safe(footer_rc,
+			     "Clear Results", _self, :clear_results|()|)
+	write("+++  5555555555+++")
+	
+_endmethod
+$
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.activate_dialog_version3_version4(p_frame)
+	## 
+	##
+	
+	wdi_db_difference_gui_plugin.active_instance << _self   
+	p_frame.default_resize? << _true 
+	p_frame.title << "Database Difference Tool"
+
+	# ------------------- Status ----------------------------------------
+	status_panel << panel.new(p_frame)
+	rc_stat << rowcol.new(status_panel, 2, 2, :pixel, :style, :top_level)
+
+	label_item.new(rc_stat, "Status:", :row, 1, :col, 1)
+	.items[:st] << label_item.new(rc_stat, " Ready...                                                     ",
+				      :row, 1, :col, 2)
+
+	top << panel.new(p_frame)
+	
+	button_width << _self.get_optional_resource(:min_button_width, :integer)
+	p_frame.resizable? << _false
+
+	rc << rowcol.new(p_frame, 18, 3, :pixel, :style, :top_level)
+	
+        # ---- Dataset dropdown ----------------------------------------------------
+	_if smallworld_product.release_version =  3
+	_then
+           #3.3.0 GUI setup
+	choice_rc2 << rowcol.new(rc, _unset, 1, :pixel, :row, 2, :col, 1, :col_alignment, :fill)
+	.items[:dataset] << choice_item.new(choice_rc2, "  DATASETS *           ",
+					         _self.db_list(),_unset,
+						 :model, _self,
+						 :min_width, 250,
+						 :display_all?,_false, 
+						 :change_selector, :dataset_changed|()|)
+
+	
+
+	# --- Table Selection Tree -----------------------------------------------------
+	label_item.new(rc, "  TABLES *", :row, 3, :col, 1, :col_alignment, :left)
+	
+	table_rc << rowcol.new(rc, _unset, 1, :pixel, :row, 4, :col, 1, :col_alignment, :fill)
+	
+	_local l_table_tree << .table_tree_item <<
+		tree_item.new(table_rc,
+			      :col_alignment, :fill,
+			      :row_alignment, :fill,
+			      :model, _self,
+			      :aspect, :tables_aspect,
+			      :column_headings, {"Select", "Table Name"},
+			      :column_heading_ids, {:check, :table_name},
+			      :column_widths, {100, 250},
+			      :column_alignments, {:centre, :left},
+			      :grid_lines?, _true,
+			      :height, 100,
+			      :mode, :none,
+			      :value_click_notifier, :table_tree_note_changes|()|)
+	_elif smallworld_product.release_version = 4
+	_then
+          # ---- Dataset dropdown ----------------------------------------------------
+	choice_rc2 << rowcol.new(rc, _unset, 1, :pixel, :row, 2, :col, 1, :col_alignment, :fill)
+	.items[:Dataset] << text_choice_item.new(choice_rc2, "  DATASETS *           ",
+						 :items, _self.db_list(),
+						 :model, _self,
+						 :min_width, 250,
+						 :change_selector, :dataset_changed|()|)
+	
+	# --- Table Selection Tree -----------------------------------------------------
+	label_item.new(rc, "  TABLES *", :row, 3, :col, 1, :col_alignment, :left)
+	
+	table_rc << rowcol.new(rc, _unset, 1, :pixel, :row, 4, :col, 1, :col_alignment, :fill)
+	write("+++ b4 ltree table +++")
+	
+	_local l_table_tree << .table_tree_item <<
+		tree_item.new(table_rc,
+			      :col_alignment, :fill,
+			      :row_alignment, :fill,
+			      :model, _self,
+			      :aspect, :tables_aspect,  
+			      :column_headings, {"Select", "Table Name"},
+			      :column_heading_ids, {:check, :table_name},
+			      :column_widths, {100, 250},
+			      :column_alignments, {:centre, :left},
+			      :grid_lines?, _true,
+			      :height, 100,
+			      :mode, :none,
+			      :value_click_notifier, :note_changes|()| )
+	_else
+		    write("Unsupported Smallworld version: ", smallworld_product.release_version)
+      _endif
+ 
+
+	# --- Mode Selection Label ---------------------------------------------
+	label_item.new(rc, " Select below Alternative/Checkpoint Mode to find the data differences between them :",
+		       :row, 10, :col, 1,
+		       :col_alignment, :left)
+	
+
+
+	# --- Alternative Radio Button --------------------------------------------
+	
+	.items[:rb_alt] << radio_item.new(rc, "Alternative",
+					  :row, 11, :col, 1,
+					  :col_alignment, :left,
+					  :group, :mode_group,
+					  :model, _self)
+					 # :change_selector, :mode_changed|()|)
+	
+	# --- Checkpoint Radio Button -----------------------------------------
+
+	.items[:rb_chk] << radio_item.new(rc, "Checkpoint",
+					  :row, 11, :col, 1,
+					  :col_alignment, :centre,
+					  :group, :mode_group,
+					  :model, _self)
+					 # :change_selector, :mode_changed|()|)
+	
+	# --- FROM Alternative text box ----------------------------------------------------
+	
+	.items[:from_alternative] << text_item.new(rc, " FROM ALTERNATIVE      ",
+							:row, 6, :col, 1,
+							:col_alignment, :fill,
+							:min_width, 250,
+							:enabled?, _true)
+
+         .items[:from_btn] << button_item.new_safe(rc, " Select From Alt ", _self, :open_version_dialog_from|()|,
+			     :row, 6, :col, 2, :col_alignment, :right, :min_width, 100)
+	
+	# --- TO Alternative text box -------------------------------------------------------
+	
+	.items[:to_alternative] << text_item.new(rc, " TO ALTERNATIVE        ",
+							:row, 7, :col, 1,
+							:col_alignment, :fill,
+							:min_width, 250,
+							:enabled?, _true)
+
+
+          .items[:to_btn] <<	button_item.new_safe(rc, "Select To Alt", _self, :open_version_dialog_to|()|,
+			     :row, 7, :col, 2, :col_alignment, :right, :min_width, 100)
+	
+	# --- FROM Checkpoint dropdown -------------------------------------------------------
+	
+	choice_rc4 << rowcol.new(rc, _unset, 1, :pixel, :row, 8, :col, 1, :col_alignment, :fill)
+
+	_if smallworld_product.release_version = 3
+	_then
+      
+	.items[:from_checkpoint] << choice_item.new(choice_rc4, "  FROM CHECKPOINTS *         ",
+							  _self.chk_list(),_unset,
+							 :model, _self,
+							 :col_alignment, :fill,
+							 :min_width, 250,
+							 :display_all?,_false, 
+							 :enabled?, _true)
+	
+	# --- TO Checkpoint dropdown ---------------------------------------------------------------
+
+	.items[:to_checkpoint] << choice_item.new(choice_rc4, "  TO CHECKPOINTS *        ",
+						        _self.chk_list(),_unset,
+						       :model, _self,
+						       :col_alignment, :fill,
+						       :min_width, 250,
+						       :display_all?,_false,
+						       :enabled?, _true)
+	_elif smallworld_product.release_version = 4
+	_then
+		.items[:from_checkpoint] << text_choice_item.new(choice_rc4, "  FROM CHECKPOINTS *         ",
+							 :items, _self.chk_list(),
+							 :model, _self,
+							 :col_alignment, :fill,
+							 :min_width, 250,
+							 :enabled?, _true)
+
+	     # --- TO Checkpoint dropdown ---------------------------------------------------------------
+
+	    .items[:to_checkpoint] << text_choice_item.new(choice_rc4, "  TO CHECKPOINTS *        ",
+						       :items, _self.chk_list(),
+						       :model, _self,
+						       :col_alignment, :fill,
+						       :min_width, 250,
+						       :enabled?, _true)
+	
+	 _endif 
+
+	# --- Find and Clear Buttons ---------------------------------------------------------------
+	button_item.new_safe(rc, "   Find Difference   ", _self, :find_difference|()|, :row, 12, :col, 1, :col_alignment, :left)
+	button_item.new_safe(rc, "   Clear Selection   ", _self, :clear_form|()|, :row, 12, :col, 1, :col_alignment, :centre)
+
+	# -------Results Table ----------------------------------------------------------------------------
+
+	_local l_rc << rowcol.new(p_frame, _unset, 1, _unset,
+				  :row_resize_values, {100, 0},
+				  :resize_x?, _true, :resize_y?, _true)
+	
+	# Results tree_item
+
+	_local  l_tree_item << .tree_item <<
+		tree_item.new(l_rc,
+			      :col_alignment, :fill,
+			      :row_alignment, :fill,
+			      :model, _self,
+			      :aspect, :difference_records,
+			      :style_holder, _unset,
+			      :column_headings, {"SNO", " Table Name","Table Key Field","Table Key Value", "Operation Type","Updated Field name","Before Value","Afetr Value"},
+			      :column_heading_ids, {:Sno, :Tablename,:table_key_field,:table_key_value, :Operation_type,:updated_fields,:before_value,:after_value},
+			      :column_widths, {150, 150, 150, 150,150,150,150,150},
+			      :column_alignments, {:left, :left, :left, :left,:left,:left,:left,:left},
+			      :row_headings?, _true,
+			      :row_headings_alignment, :right,
+			      :cell_selection?, _true,
+			      :grid_lines?, _true,
+			      :mode, :one,
+			      :select_notifier, :|selected()|)
+	
+	# Assign tree_item to itpems for later use
+	.items[:tree_item] << l_tree_item
+	
+	l_tree_item.selection.add_dependent(_self, :anything_selected?)
+	
+	# --- Report Buttons -----------------------------------------------
+	_local l_panel_2 << panel.new(p_frame)
+	l_panel_2.resize_x? << _true 
+	l_panel_2.resize_y? << _true
+
+	_local panel_rc_2 << rowcol.new(l_panel_2, 1, 2)
+	
+	.items[:generate_report] << button_item.new_safe(panel_rc_2, "Export Results", _self, :export_results|()|,
+							  :row, 1, :col, 1, :enabled?, _false)
+	button_item.new_safe(panel_rc_2, "Clear Results", _self, :clear_results|()|, :row, 1, :col, 2)
+_endmethod
+$
+# ==============================================================================
+# Dataset / Table population
+# ==============================================================================
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.db_list()
+	##
+	## Build and return a rope of available GIS database names for the
+	## DATASETS dropdown.  The first entry is a "Select" prompt.
+	##
+	_local gpm << gis_program_manager
+	_local l_rp << rope.new_with("------Select---------")
+	l_db << gpm.databases
+	
+	_for a_db _over l_db.fast_elements()
+	_loop
+		db_l << a_db.external_name
+		l_rp.add(db_l)
+	_endloop
+	
+	>> l_rp
+_endmethod
+$
+
+# --- Dataset changed ---
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.dataset_changed(p_value)
+        ##
+	## Called when the user selects a new dataset from the DATASETS dropdown.
+	## Reloads the table tree and resets all comparison fields.
+	##
+	## Parameters:
+	##   p_value - External name string of the newly selected dataset.
+	##
+	_local l_db
+ 
+	_if p_value = "------Select---------"
+	_then
+		_return
+	_endif
+	_local gpm << gis_program_manager
+	
+	.current_dataset << p_value.lowercase.as_symbol()               
+	.db_view  << gpm.databases[.current_dataset]
+	
+
+	# --- Build and display tables ---
+	_if .db_view _isnt _unset 
+	_then
+		 
+		.table_list << _self.build_table_list()
+		_self.changed(:tables_aspect, :renew)
+	_endif
+
+	# Clear values
+	.items[:from_alternative].value << ""
+	.items[:to_alternative].value << ""
+	#.items[:from_checkpoint].value << ""
+	#.items[:to_checkpoint].value << ""
+
+	# Clear results tree and list
+	_if .items[:tree_item] _isnt _unset
+	_then
+		.items[:tree_item].clear()
+	_endif
+	.list << rope.new()
+	.items[:generate_report].enabled? << _false
+	
+	.items[:st].value << " Dataset loaded: " + p_value
+
+_endmethod
+$
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.table_tree_note_changes(p_tree, p_id, p_value)
+	## 
+	## Called by the table tree when a checkbox value changes.
+	## When the "All" row is toggled, propagates the new check state to
+	## every other row in the table list.
+	##
+	## Parameters:
+	##   p_tree  - The display_tree node whose value changed.
+	##   p_id    - The column id that changed (expected :check).
+	##   p_value - The new boolean value of the checkbox.
+	##
+	
+	_if p_id _is :check
+	_then
+		_if p_tree.value[:table_name] = "All"
+		_then
+			_local all_checked? << p_value
+			_for a_dt _over .table_list.fast_elements()
+			_loop
+				_if a_dt.value[:table_name] _isnt "All"
+				_then
+					a_dt.value[:check] << all_checked?
+				_endif
+			_endloop
+			_self.changed(:tables_aspect, :refresh)
+		_endif
+	_endif
+	
+_endmethod
+$
+_method wdi_db_difference_gui_plugin.note_changes(p_tree,p_id,p_value)
+	## 
+	## Called by the table tree when a checkbox value changes.
+	## When the "All" row is toggled, propagates the new check state to
+	## every other row in the table list.
+	##
+	## Parameters:
+	##   p_tree  - The display_tree node whose value changed.
+	##   p_id    - The column id that changed (expected :check).
+	##   p_value - The new boolean value of the checkbox.
+	##
+	 write("+++ note_changes method  +++")
+	 
+	_if p_id _is :check
+	_then
+		_if p_tree.value[:table_name] = "All"
+		_then
+			_local all_checked? << p_value
+			_for a_dt _over .table_list.fast_elements()
+			_loop
+				write("+++ inside loop  +++")
+				
+				_if a_dt.value[:table_name] _isnt "All"
+				_then
+					a_dt.value[:check] << all_checked?
+				_endif
+			_endloop
+			_self.changed(:tables_aspect, :refresh)
+		_endif
+	_endif
+
+	
+_endmethod
+$
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.tables_aspect
+        ##
+	## Aspect accessor for the table-selection tree_item.
+	## Returns the current table_list rope.
+	##
+	>> .table_list	
+_endmethod
+$
+
+# --- Build table list ---
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.build_table_list()
+        ##
+	## Construct and return a rope of display_tree nodes representing the
+	## user-visible tables in the current database view.
+	## The first node is an "All" toggle row for select-all behaviour.
+	##
+	_local l_list << rope.new()
+	
+	_local l_styled_string << styled_string.new(
+		                     :toggle, :check,
+		                     :tab, :value, :table_name)
+
+	_if .db_view _isnt _unset
+	_then
+	        # Add ALL row
+		_local l_value << property_list.new_with(:table_name, "All",:check, _false)
+		
+		_local l_display_tree << display_tree.new("All", l_value)
+		l_display_tree.styled_string << l_styled_string
+		l_list.add(l_display_tree)
+
+		#  One row per user table, sorted alphabetically
+		_for a_t _over .db_view.user_table_names.as_sorted_collection().fast_elements()
+		_loop
+			l_value << property_list.new_with(:table_name, a_t,:check, _false)
+
+			l_display_tree << display_tree.new(a_t, l_value)
+			l_display_tree.styled_string << l_styled_string
+			l_list.add(l_display_tree)
+		_endloop
+	
+	_endif
+
+	>> l_list
+	
+_endmethod
+$
+# ==============================================================================
+# Mode handling (Alternative vs Checkpoint)
+# ==============================================================================
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.mode_changed()
+	##
+	## Called when the user switches between Alternative and Checkpoint mode.
+	## Enables the fields relevant to the selected mode and disables the others.
+	##
+
+		
+	_if .items[:rb_alt].value
+	_then
+		# Alternative mode
+		.items[:from_alternative].enabled? << _true
+		.items[:to_alternative].enabled? << _true
+		.items[:from_checkpoint].enabled? << _true
+		.items[:to_checkpoint].enabled? << _true
+		
+	_elif .items[:rb_chk].value
+	_then
+		# Checkpoint mode
+		.items[:from_checkpoint].enabled? << _true
+		.items[:to_checkpoint].enabled? << _true
+		.items[:from_alternative].enabled? << _true
+		.items[:to_alternative].enabled? << _true
+	_endif
+_endmethod
+$
+# ==============================================================================
+# Table selection helpers
+# ==============================================================================
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.get_selected_tables()
+        ##
+	## Return a rope of collection objects for every table whose checkbox is
+	## ticked in the table-selection tree.
+	## If the "All" row is checked, returns all user-visible collections.
+	##
+
+	
+	_local selected_tables << rope.new()
+	
+	_if .table_list _isnt _unset
+	_then
+		_for a_dt _over .table_list.fast_elements()
+		_loop
+			_if a_dt.value[:check] _is _true _andif
+			    a_dt.value[:table_name] _isnt "All"
+			_then
+				# Get the actual collection object, not just the name
+				table_name_sym << a_dt.value[:table_name].as_symbol()
+				_if .db_view.collections[table_name_sym] _isnt _unset
+				_then
+					selected_tables.add(.db_view.collections[table_name_sym])
+				_endif
+			_endif
+		_endloop
+	_endif
+	
+	# If ALL was checked, return all table collections
+	_if .table_list.size > 0 _andif
+	   .table_list.first.value[:check] _is _true
+	_then
+		selected_tables << rope.new()
+		_for a_tbl _over .db_view.user_table_names.fast_elements()
+		_loop
+			_if .db_view.collections[a_tbl] _isnt _unset
+			_then
+				selected_tables.add(.db_view.collections[a_tbl])
+			_endif
+		_endloop
+	_endif
+	
+	>> selected_tables
+	
+_endmethod
+$
+
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.difference_records
+	## Returns the list of difference records to be displayed
+	#	write("difference_records method called")
+	>> .list
+_endmethod
+$
+
+# ==============================================================================
+# Results display builder
+# ==============================================================================
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.build_results_display(ht, p_old_view, p_new_view)
+	##
+	## Convert the raw difference hash table (ht) into a rope of display_tree
+	## nodes and refresh the results tree widget.
+	##
+	## INSERT and REMOVE records appear as top-level rows.
+	## UPDATE records appear as top-level rows with child rows for each
+	## changed field showing before/after values.
+	##
+	## Only records belonging to the user-selected tables are included.
+	##
+	## Parameters:
+	##   ht          - Hash table with :insert / :update / :remove sets.
+	##   p_old_view  - The "from" database view (used for field comparison).
+	##   p_new_view  - The "to"   database view (used for field comparison).
+	##
+	_local result_list << rope.new()
+	_local counter << 0
+	_local  selected_tables << _self.get_selected_tables()
+	_local l_styled_string << styled_string.new(
+					  :value, :Sno,
+					  :tab, :value, :Table_name,
+					  :tab, :value, :table_key_field,
+					  :tab, :value, :table_key_value,
+					  :tab, :value, :Operation_type,
+					  :tab, :value, :updated_fields,
+					  :tab, :value, :before_value,
+					  :tab, :value, :after_value)
+	
+	# --------------------------------------------- INSERT records-----------------------------------------------------
+
+			
+	_for a_rec _over ht[:insert].fast_elements()
+	_loop
+	     	_if smallworld_product.release_version =  3
+		_then
+			l_tables? <<selected_tables.equality_includes?(a_rec.source_collection)	
+		_elif smallworld_product.release_version =  4 _orif smallworld_product.release_version =  5
+		_then 
+			
+			l_tables? <<  selected_tables.includes_by_equality?(a_rec.source_collection)
+		_endif 
+		_if a_rec.is_rwo? _andif l_tables?
+		_then
+			counter +<< 1
+			_if a_rec.responds_to?(:id)
+			_then
+			
+				l_key_field << "ID"
+				l_key_value << a_rec.id.write_string
+			_elif a_rec.responds_to?(:name)
+			_then
+			
+				l_key_field << "Name"
+				l_key_value << a_rec.name
+			_else
+				l_key_field << "Unknown"
+				l_key_value << a_rec
+				
+			_endif
+			l_value << property_list.new_with(
+					   :Sno, counter.write_string,
+					   :Table_name, a_rec.source_collection.external_name,
+					   :table_key_field,l_key_field ,
+					   :table_key_value,l_key_value, 
+					   :Operation_type, "INSERT",
+					   :updated_fields,"",
+					   :before_value,"",
+					   :after_value,"")
+			
+			l_dp << display_tree.new(counter, l_value)
+			l_dp.styled_string << l_styled_string
+			
+		        result_list.add(l_dp)
+			
+		_endif
+	_endloop
+	
+	#-------------------------------------------- Process UPDATE records------------------------------------------
+	_for a_rec _over ht[:update].fast_elements()
+	_loop
+		_if smallworld_product.release_version =  3
+		_then
+			l_tables? <<selected_tables.equality_includes?(a_rec.source_collection)	
+		_elif smallworld_product.release_version =  4 _orif smallworld_product.release_version =  5
+		_then 
+			
+			l_tables? <<  selected_tables.includes_by_equality?(a_rec.source_collection)
+		_endif
+		_if a_rec.is_rwo? _andif l_tables?
+		_then
+		     	counter +<< 1
+				_if a_rec.responds_to?(:id)
+			_then
+			
+				l_key_field << "ID"
+				l_key_value << a_rec.id.write_string
+			_elif a_rec.responds_to?(:name)
+			_then
+			
+				l_key_field << "Name"
+				l_key_value << a_rec.name
+			_else
+				l_key_field << "Unknown"
+				l_key_value << a_rec
+			
+			_endif
+		
+		
+			l_value << property_list.new_with(
+					   :Sno, counter.write_string,
+					   :Table_name, a_rec.source_collection.external_name,
+					   :table_key_field, l_key_field,
+					   :table_key_value, l_key_value,
+					   :Operation_type, "UPDATE",
+					   :updated_fields,"",
+				           :before_value,"",
+					   :after_value,"")
+			l_dp << display_tree.new(counter, l_value)
+			l_dp.styled_string << l_styled_string
+
+			# Add child rows for each changed field
+			 child_counter << 0
+			_for a_field _over a_rec.visible_fields.fast_elements()
+			_loop
+				(diff?, old_val, new_val)  << _self.compare_record(p_old_view, p_new_view, a_rec, a_field.name)
+				
+			        _if diff?
+				_then
+					
+					_if a_rec.field(a_field.name).responds_to?(:join_type) _andif
+
+
+					    a_rec.field(a_field.name).join_type = :db_set_join 
+					_then
+					  
+					       _continue  
+					       	
+					_endif
+					child_counter +<< 1  # first diff becomes .1, second .2, etc.
+					# Create a new property list for each changed field
+					l_child_val << property_list.new_with(
+							       :Sno, counter.write_string + "." + child_counter.write_string,
+							       :Table_name, a_rec.source_collection.external_name,
+							       :table_key_field, l_key_field,
+							       :table_key_value, l_key_value,
+							       :Operation_type, "UPDATE",
+							       :updated_fields,a_field.name.write_string,
+							       :before_value, old_val.write_string,
+                                                               :after_value, new_val.write_string)
+					
+					l_child_dp << display_tree.new(counter.write_string + "." + child_counter.write_string, l_child_val)
+					l_child_dp.styled_string << l_styled_string
+					l_dp.add_child(l_child_dp)
+						
+	                        
+				_endif
+				
+			_endloop
+			
+			result_list.add(l_dp)	
+		_endif
+		
+	_endloop
+	
+	#---------------------------------------------------------- Process REMOVE records-----------------------------------------------------
+	_for a_rec _over ht[:remove].fast_elements()
+	_loop
+		_if smallworld_product.release_version =  3
+		_then
+			l_tables? <<selected_tables.equality_includes?(a_rec.source_collection)	
+		_elif smallworld_product.release_version =  4 _orif smallworld_product.release_version =  5
+		_then 
+			
+			l_tables? <<  selected_tables.includes_by_equality?(a_rec.source_collection)
+		_endif
+		_if a_rec.is_rwo? _andif l_tables?
+		_then
+		  	counter +<< 1
+		        		_if a_rec.responds_to?(:id)
+			_then
+		
+				l_key_field << "ID"
+				l_key_value << a_rec.id.write_string
+			_elif a_rec.responds_to?(:name)
+			_then
+			
+				l_key_field << "Name"
+				l_key_value << a_rec.name
+			_else
+				l_key_field << "Unknown"
+				l_key_value << a_rec
+				
+			_endif
+		
+			l_value << property_list.new_with(
+					   :Sno, counter.write_string,
+					   :Table_name, a_rec.source_collection.external_name,
+					   :table_key_field,l_key_field,
+					   :table_key_value, l_key_value,
+					   :Operation_type, "REMOVE",
+					   :updated_fields,"",
+					   :before_value,"",
+					   :after_value,"")
+			
+			l_dp << display_tree.new(counter, l_value)
+			l_dp.styled_string << l_styled_string
+			result_list.add(l_dp)	
+		_endif
+		
+	_endloop
+        # -------------------- Finalize ---------------------------------------------
+	# Update the list and refresh display
+	.list << result_list
+	_self.changed(:difference_records, :renew)
+	
+_endmethod
+$
+
+# ==============================================================================
+# Clear / Reset methods
+# ==============================================================================
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.clear_form()
+	## Clear all form fields
+	
+	_try
+		.items[:dataset].value << "------Select---------"
+		
+		# Uncheck all tables
+		_if .table_list _isnt _unset
+		_then
+			_for a_dt _over .table_list.fast_elements()
+			_loop
+				a_dt.value[:check] << _false
+			_endloop
+			_self.changed(:tables_aspect, :refresh)
+		_endif
+		
+		.items[:generate_report].enabled? << _false
+
+		# Reset alternatives and checkpoints
+		.items[:from_alternative].value << ""
+		.items[:to_alternative].value << ""
+		.items[:from_checkpoint].value <<"---Select---"
+		.items[:to_checkpoint].value << "---Select---"
+
+		# Reset radio buttons
+		.items[:rb_alt].value << _false
+		.items[:rb_chk].value << _false
+
+
+		.items[:st].value << " Ready..."
+	_when error
+		!error_output!.write("Clear form error: ", condition.report_contents_string, newline_char)
+	_endtry
+_endmethod
+$
+
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.clear_results()
+	## 
+	## Clear results tree and list
+	##
+	
+	_if .items[:tree_item] _isnt _unset
+	_then
+		.items[:tree_item].clear()
+	_endif
+	.list << rope.new()
+	
+_endmethod
+$
+
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.selected()
+	##
+	## Called when the user selects a row in the results tree.
+	## Enables the Generate Outage Report button.
+	##
+	.items[:generate_report].enabled? << _true 
+_endmethod
+$
+
+# ==============================================================================
+# from ---Checkpoint list helper
+# ==============================================================================
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.chk_list()
+	##
+	## Build and return a rope of checkpoint display strings for the
+	## FROM / TO CHECKPOINT dropdowns.
+	## Format: "checkpoint_name (timestamp)"
+	##
+
+	_local chk_rp << rope.new_with("---Select---", "***disk version***")
+	_local gpm << gis_program_manager
+	_local db_view << gpm.databases[.current_dataset]
+
+	_if db_view _isnt _unset
+	_then
+		_for chk _over db_view.checkpoints.fast_elements()
+		_loop
+			_local cp_name << chk.checkpoint_name
+			_local cp_time << chk.time_created.write_string
+			_local display_str << cp_name + " (" + cp_time + ")"
+
+			chk_rp.add(display_str)
+		_endloop
+	_endif
+
+	>> chk_rp
+_endmethod
+$
+
+# ==============================================================================
+# Find Differences
+# ==============================================================================
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.find_difference()
+	##
+	## Main entry point for the "Find Difference" button.
+	## Validates user selections and delegates to either
+	## get_alternative_differences() or get_checkpoint_differences().
+	##
+	
+	_local new_view, old_view, tables, ht, ct, lc ,l_app,chk_view
+
+    	_if smallworld_product.release_version =  3
+	_then 
+		
+		l_app <<  gis_program_manager.applications[:gis]
+
+	_elif smallworld_product.release_version =  4 _orif smallworld_product.release_version =  5
+	_then 
+	
+	  l_app << smallworld_product.application(:cam_db_swaf_professional)
+	_endif 
+	 l_table_list <<_self.get_selected_tables()
+	 
+	# Require at least one table to be selected
+	_if l_table_list.empty?
+	_then
+		l_app.show_message( "Please select atleast one Table to find data differences  ")
+		 _return
+	_endif
+
+	 _if .items[:rb_alt].value _is _true
+	 _then
+		 # ---- Alternative mode ------------------------------------------------
+		 from_alt << .items[:from_alternative].value
+		 to_alt << .items[:to_alternative].value
+		 _if from_alt = "" _orif
+		     to_alt = " "
+		 _then
+			 l_app.show_message( "Please select Alternative to fetch the data differences ")
+			 _return 
+		 _endif
+		 .items[:st].value << " Fetching data diffrernces between selected Alternatives "
+		 _self.get_alternative_differences()
+		 
+	 _elif .items[:rb_chk].value _is _true
+	 _then
+		 # ---- Checkpoint mode -------------------------------------------------
+		 from_chk << .items[:from_checkpoint].value.write_string
+		 to_chk << .items[:to_checkpoint].value.write_string
+		 _if from_chk = "---Select---" _orif
+		     to_chk = "---Select--"
+		 _then
+			 l_app.show_message( "Please select Checkpoint to fetch the data differences ")
+			 _return 
+		 _endif
+		 .items[:st].value << " Fetching data diffrernces between selected checkpoint "
+		 _self.get_checkpoint_differences()
+	 _else
+		 # ---- No mode selected -----------------------------------------------
+		 l_app.show_message( "Please select Alternative\Checkpoint mode to fetch the data differences. ")
+		 _return 
+	 _endif	
+_endmethod
+$
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.get_checkpoint_differences()
+	## 
+	##Compare differences between two checkpoints
+	
+	_local from_alt,from_chk,chk_view,to_chk,old_view,new_view,from_chk_view,to_chk_view,ht, ct, lc
+	
+	# Extract values from GUI
+        from_alt << .items[:from_alternative].value
+	to_alt << .items[:to_alternative].value
+	from_chk << .items[:from_checkpoint].value.split_by("(").first.trim_spaces()
+	to_chk << .items[:to_checkpoint].value.split_by("(").first.trim_spaces()
+	
+	# Switch to the selected alternative
+
+	.db_view.go_to_alternative(from_alt)
+
+	# Build views for FROM and TO checkpoints
+	_if from_chk = "***disk version***" 
+	_then
+		chk_view << .db_view.go_to_checkpoint(to_chk,:readonly)
+		
+		old_view<< .db_view.replicate()
+		
+		.db_view.rollforward()
+		
+		new_view << .db_view
+		
+	_elif to_chk = "***disk version***" 
+	_then
+		chk_view << .db_view.go_to_checkpoint(from_chk,:readonly)
+		
+		old_view<< .db_view.replicate()
+		
+		.db_view.rollforward()
+		
+		new_view << .db_view
+	_else
+		.db_view.go_to_alternative(from_alt)
+		from_chk_view << .db_view.go_to_checkpoint(from_chk,:readonly)
+		
+		old_view<< .db_view.replicate()
+		
+		.db_view.go_to_alternative(to_alt)
+		to_chk_view << .db_view.go_to_checkpoint(to_chk,:readonly)
+		
+		new_view << .db_view	
+	_endif
+	
+	# Get selected tables
+	lc << _self.get_selected_tables()
+	
+        # Run difference engine
+	(ht, ct, lc) << .db_diff_eng.difference_db(new_view, old_view)
+	
+	# Build and display results
+	_self.build_results_display(ht, old_view, new_view)
+	
+_endmethod
+$
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.get_alternative_differences()
+	## 
+	## 
+        _local from_alt, to_alt, old_view, new_view,ht, ct, lc
+	
+        #alternatives mode
+	from_alt << .items[:from_alternative].value     
+	to_alt << .items[:to_alternative].value
+	
+	.db_view.go_to_alternative(from_alt)
+	
+	old_view<< .db_view.replicate()
+
+	.db_view.go_to_alternative(to_alt)
+	
+	.db_view.rollforward()
+	
+	new_view << .db_view
+
+	# Get selected tables
+	lc << _self.get_selected_tables()
+
+	# Run difference engine
+	(ht, ct, lc) << .db_diff_eng.difference_db(new_view, old_view)
+
+	# Build and display results
+	_self.build_results_display(ht, old_view, new_view)
+	
+_endmethod
+$
+# ==============================================================================
+# Field comparison helper
+# ==============================================================================
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.compare_record(old,new,rec,field)
+	##
+	## Compare the value of a single field between the old and new views for
+	## the record identified by rec
+	##
+	_local coll_name, old_rec, new_rec, old_val, new_val
+
+	# Safe collection name
+	_if rec.source_collection.responds_to?(:name)
+	_then
+		coll_name << rec.source_collection.name
+	_else
+		coll_name << rec.source_collection.external_name
+	_endif
+
+	# Choose identifier field
+	_local key_field
+	_if rec.responds_to?(:name)
+	_then
+		
+		key_field << :name
+		key_val << rec.name
+	_elif rec.responds_to?(:id)
+	_then
+		key_field << :id
+		key_val << rec.id
+	_else
+		write("Warning: record has no :name or :id, skipping")
+		_return _false
+	_endif
+
+	# Select records safely
+	old_rec << old.collections[coll_name].select(predicate.eq(key_field, key_val)).an_element()
+	new_rec << new.collections[coll_name].select(predicate.eq(key_field, key_val)).an_element()
+
+	_if old_rec _is _unset _orif new_rec _is _unset
+	_then
+		write("Warning: could not locate matching records in ", coll_name)
+		_return _false
+	_endif
+
+	# Compare field values
+	_try
+		old_val << old_rec.perform(field)
+		new_val << new_rec.perform(field)
+
+		_if old_val <> new_val
+		_then
+			_return _true, old_val, new_val
+		_endif
+	_when error
+		write("Error comparing field ", field, " in ", coll_name)
+		_return _false
+	_endtry
+
+	_return _false
+_endmethod
+$
+# ==============================================================================
+# Version dialog helpers  (FROM and TO)
+# ==============================================================================
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.open_version_dialog_from()
+	##
+	## Opens the Version Management dialog to select the FROM alternative.
+	## .last_dialog_opened is set to :from so on_deactivation knows
+	## which text box to update.
+	##
+		
+		write("+++ 2222222222222 +++")
+		
+	_if .current_dataset _is _unset
+	_then
+		_self.user_error("Please select a dataset first")
+		_return
+	_endif
+
+	.last_dialog_opened << :from
+	
+        _if smallworld_product.release_version = 3
+        _then
+	 l_app <<  gis_program_manager.applications[:gis]
+	 l_app.activate_version_control()
+	 
+	 _elif smallworld_product.release_version = 4 _orif smallworld_product.release_version =  5
+         _then
+	       write("+++ 11111111 +++")
+	       
+	      _local vm_plugin << smallworld_product.applications.an_element().plugin(:versions)  
+	      _if vm_plugin _isnt _unset
+	      _then
+		      vm_plugin.activate_as_dialog("", "")
+	       _else
+		_self.user_error("Version Management plugin not available")
+	       _endif
+	_else
+		write("version management error")
+        _endif 
+
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.open_version_dialog_to()
+	##
+	## Opens the Version Management dialog to select the TO alternative.
+	##
+		
+	_if .current_dataset _is _unset
+	_then
+		_self.user_error("Please select a dataset first")
+		_return
+	_endif
+
+	.last_dialog_opened << :to
+
+	_if smallworld_product.release_version = 3
+        _then
+		l_app <<  gis_program_manager.applications[:gis]
+		l_app.activate_version_control()
+		
+	_elif smallworld_product.release_version = 4 _orif smallworld_product.release_version =  5
+	_then
+		
+		_local vm_plugin << smallworld_product.applications.an_element().plugin(:versions)  
+		_if vm_plugin _isnt _unset
+		_then
+			vm_plugin.activate_as_dialog("", "")
+		_else
+			_self.user_error("Version Management plugin not available")
+		_endif
+	_else
+		write("version management error")
+        _endif 
+
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.export_results()
+	## 
+	##
+ 
+	# Save the report in the selected location
+	args << rope.new_with(:do_creation_check?,_true)
+ 
+	_if _self.report_dir _isnt _unset
+	_then
+		args.add_all_last({:directory, _self.report_dir})
+	_endif
+	report_file_selector <<
+		file_selection.new(_self,
+				   "Save File",  
+				   :|open_file()|, _unset,
+				   _scatter args)
+ 
+	report_file_selector.filter       << "*.xls"
+	report_file_selector.directories? << _false
+ 
+	report_file_selector.activate()
+_endmethod
+$
+
+
+_pragma(classify_level=restricted, topic={db_difference_tool})
+_method wdi_db_difference_gui_plugin.open_file(fname)
+	## get the selected row key and use it to obtain the network
+	## element from the .list
+	##
+        _local output_stream, selected_element, l_app
+
+	l_app << smallworld_product.applications.an_element()
+	
+	selected_element << .items[:tree_item].selection.an_element()
+	_protect
+		_if selected_element _isnt _unset
+		_then
+			# Create CSV file
+			output_stream << external_text_output_stream.new(fname)
+
+			
+			# Write header
+			output_stream.write("SNO,Table Name,Table Key Field,Table Key Value, Operation Type,Updated Field name,Before Value,Afetr Value", newline_char)
+			
+                        #	output_stream.write("SNO","|","Table Name","|","Table Key Field","|","Table Key Value","|","Operation Type","|","Updated Field name","|","Before Value","|","Afetr Value", newline_char)
+			# Write each difference record (including children)
+			_for a_diff _over .list.fast_elements()
+			_loop
+				val << a_diff.value
+				l_kvalue << val[:table_key_value].write_string
+				l_kvalue  << l_kvalue.replace_all_instances_of(","," ")
+				output_stream.write(val[:Sno], ",",
+						    val[:Table_name],",",
+						    val[:table_key_field], ",",
+						    #val[:table_key_value], ",",
+						    l_kvalue, ",",
+						    val[:Operation_type], ",",
+						    val[:updated_fields], ",",
+						    val[:before_value].replace_all_instances_of(","," "), ",",
+						    val[:after_value].replace_all_instances_of(","," "),newline_char)
+				
+				
+				
+				# Export children if present
+				_if a_diff.children.size > 0
+				_then
+					
+					_for child _over a_diff.children.fast_elements()
+					_loop
+						cval << child.value
+						l_ckvalue << cval[:table_key_value].write_string
+						l_ckvalue << l_ckvalue.replace_all_instances_of(","," ")
+						output_stream.write(cval[:Sno], ",",
+								    cval[:Table_name],"," ,
+								    cval[:table_key_field], ",",
+								    #cval[:table_key_value], ",",
+								    l_ckvalue, ",",
+								    cval[:Operation_type], ",",
+								    cval[:updated_fields], ",",
+								    cval[:before_value].replace_all_instances_of(","," "), ",",
+								    cval[:after_value].replace_all_instances_of(","," "),newline_char)
+					_endloop
+				_endif
+			_endloop
+		_else
+			l_app.show_message( "Please select atleast one row in results table ")
+			_return	
+		_endif
+		
+	_protection
+		output_stream.close()
+	_endprotect	
+_endmethod
+$
+
+_method simple_charindex_mixin.replace_all_instances_of(p_old_str, p_new_str)
+	_local       m_new_str << ""
+	_local             m_i << 1
+	_local        m_match? << _false
+	_local          m_part << ""
+ 
+	_for c _over _self.fast_elements()
+	_loop
+		_if m_part = p_old_str
+		_then
+			m_part << ""
+			m_new_str +<< p_new_str
+			m_i << 1
+		_endif
+		_if c <>  p_old_str[m_i] 
+		_then
+			m_part << ""
+			m_new_str +<< c
+			m_i << 1
+		_else
+			m_part +<< c
+			m_i +<< 1
+		_endif
+	_endloop
+ 
+	#just in case the match was the last char
+	_if m_part = p_old_str
+	_then
+		m_new_str +<< p_new_str
+	_endif
+ 
+	_return m_new_str
+_endmethod
+$
+
+_pragma(classify_level=restricted, topic={tree_item}, usage={internal})
+_method tree_agent.handle_toggle(p_tree, _optional p_row_index, p_event, p_value, p_text_style, p_text, p_dx, p_dy)
+	## Parameters    : P_TREE: The display tree on which the user
+	##                    changed a radio_toggle.
+	##                 P_ROW_INDEX: Index in the list of visible
+	##                    display trees.
+	##                 P_EVENT: Event that has been raised
+	##                 P_VALUE: _unset, or the :index in the
+	##                    display_trees value if the text comes from a :value mark
+	##                 P_TEXT_STYLE: Which is always :resolved_image
+	##                 P_IMAGE: The image as it has been resolved
+	##                 P_DX, P_DY: Relative position in P_IMAGE
+	##                    (compared to P_TEXT top left being (0,0)
+	## Returns       : _false, denoting that we do not want the
+	##                 agent to redraw (which is done manually,
+	##                 called from this method).
+	## Function      : Use the style_holder to resolve the new
+	##                 value (toggle) for the index P_VALUE. That
+	##                 is stored then in P_TREE.value(P_VALUE) << .
+	##                 If the value changed, value_changed_notifier will be called.
+	
+	_local l_old_value << p_tree.value(p_value)
+	_local l_new_value << _self.style_holder.resolve_toggle(l_old_value, :toggle, p_value)
+	_if (l_old_value _isnt l_new_value)
+	_then
+		p_tree.value(p_value) << l_new_value
+		_self.notify(:value_click_notifier, p_tree, p_value, l_new_value, l_old_value, _unset)
+		# ToDo: Improve this: we only need to redraw this row
+		_self.damaged(_unset)
+	_endif
+	# we do not want to redraw
+	>> _false
+_endmethod
+$
+# ==============================================================================
+# version_management_framework callback
+# ==============================================================================
+_method version_management_framework.on_deactivation()
+	##
+	## Called automatically when the Version Management dialog closes.
+	##
+	## HOW WE AVOID GLOBALS:
+	##   - Instead of the old  _global db_dff_plugin  we read the class
+	##     shared-variable  my_menu_rc.active_instance  which was set in
+	##     activate_in().
+	##   - Instead of the old  _global select_db  we read the slot
+	##     .current_dataset  directly from that instance.
+	##   Both globals are now completely gone.                           
+	##
+	write("+++version_management_framework.on_deactivation() called +++")
+	
+	_local gpm, current_alt, db_view, chk_rp, cp_name, cp_time, display_str
+	_local l_plugin << wdi_db_difference_gui_plugin.active_instance
+	
+             write("+++ l_plugin  +++",l_plugin )
+
+	
+		gpm     << gis_program_manager
+		db_view << gpm.databases[l_plugin.current_dataset]              
+
+		_if db_view _is _unset _orif
+		    db_view.current_alternative_details _is _unset
+		_then
+			_return
+		_endif
+
+		current_alt << db_view.current_alternative_details.alternative_name
+
+		chk_rp << rope.new_with("---Select---", "***disk version***")
+		_for a_chk _over db_view.checkpoints.fast_elements()
+		_loop
+			cp_name     << a_chk.checkpoint_name
+			cp_time     << a_chk.time_created.write_string
+			display_str << cp_name + " (" + cp_time + ")"
+			chk_rp.add(display_str)
+		_endloop
+
+		_if l_plugin.last_dialog_opened = :from
+		_then
+			l_plugin.items[:from_alternative].value << current_alt
+			l_plugin.items[:from_checkpoint].items  << chk_rp
+		_elif l_plugin.last_dialog_opened = :to
+		_then
+			l_plugin.items[:to_alternative].value << current_alt
+			l_plugin.items[:to_checkpoint].items  << chk_rp
+		_endif
+_endmethod
+$
+# ==============================================================================
+# version_management_framework callback
+# ==============================================================================
+_method version_form_editor.on_deactivation()
+	##
+	## Called automatically when the Version Management dialog closes.
+	##
+	## HOW WE AVOID GLOBALS:
+	##   - Instead of the old  _global db_dff_plugin  we read the class
+	##     shared-variable  my_menu_rc.active_instance  which was set in
+	##     activate_in().
+	##   - Instead of the old  _global select_db  we read the slot
+	##     .current_dataset  directly from that instance.
+	##   Both globals are now completely gone.                           
+	##
+	write("+++  version_form_editor.on_deactivation() +++")
+	
+	_local gpm, current_alt, db_view, chk_rp, cp_name, cp_time, display_str
+	_local l_plugin << wdi_db_difference_gui_plugin.active_instance
+	
+	_if l_plugin _is _unset
+	_then
+		_return
+	_endif
+
+	_try
+		gpm     << gis_program_manager
+		db_view << gpm.databases[l_plugin.current_dataset]
+
+		 
+			 
+		         (current_alt, alt_rp ) << db_view.alternative_path_name()
+			 
+	          
+
+		_if db_view _is _unset _orif
+		  current_alt _is _unset
+		_then
+			_return
+		_endif
+
+		chk_rp << rope.new_with("---Select---", "***disk version***")
+		_for a_chk _over db_view.checkpoints.fast_elements()
+		_loop
+			cp_name     << a_chk.checkpoint_name
+			cp_time     << a_chk.time_created.write_string
+			display_str << cp_name + " (" + cp_time + ")"
+			chk_rp.add(display_str)
+		_endloop
+
+
+		
+		_if l_plugin.last_dialog_opened = :from
+		_then
+			l_plugin.items[:from_alternative].value << current_alt
+			l_plugin.items[:from_checkpoint].set_strings_and_values(chk_rp)
+		_elif l_plugin.last_dialog_opened = :to
+		_then
+			l_plugin.items[:to_alternative].value << current_alt
+			l_plugin.items[:to_checkpoint].set_strings_and_values(chk_rp)
+		_endif
+
+	_when error
+		write("Error in on_deactivation: ", condition.report_contents_string)
+	_endtry
+_endmethod
+$
